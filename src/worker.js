@@ -11,18 +11,12 @@ __name(getHoursBetween, 'getHoursBetween');
 var worker_default = {
 	async fetch(request, env, ctx) {
 		const { id: versionId, tag: versionTag, timestamp: versionTimestamp } = env.CF_VERSION_METADATA;
-		const REVISION = '1.0.1';
-		console.log(`******`);
 		const ShortId = versionId.split('-')[0];
-		console.log(`[versionId ${ShortId}] [versionTag ${versionTag}] [versionTimestamp ${versionTimestamp}]`);
-		console.log(`******`);
-		console.log(`[REVISION ${REVISION}] Request received`);
-		console.log(`[REVISION ${REVISION}] Request received`);
 		const TEAM_NAME = '13cafbf7-cb1e-4c12-a387-04b9374c14dd';
 		const SCHEDULE_ID = env.OPSGENIE_SCHEDULE_ID;
 		const OPSGENIE_API_KEY = env.OPSGENIE_TEAM_API_KEY;
 		if (!OPSGENIE_API_KEY) {
-			console.log(`[REVISION ${REVISION}] ERROR: API key not configured`);
+			console.log(`[REVISION ${ShortId}] ERROR: API key not configured`);
 			return new Response(JSON.stringify({ error: 'API key is not configured in Worker secrets.' }), {
 				status: 500,
 				headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
@@ -30,6 +24,10 @@ var worker_default = {
 		}
 		const opsgenieUrl = `https://api.opsgenie.com/v2/schedules/${encodeURIComponent(SCHEDULE_ID)}/on-calls?teamIdentifierType=name&teamIdentifier=${encodeURIComponent(TEAM_NAME)}`;
 		const nextOnCallsUrl = `https://api.opsgenie.com/v2/schedules/${encodeURIComponent(SCHEDULE_ID)}/next-on-calls?flat=true`;
+
+		console.log(`[versionId ${ShortId}] [versionTag ${versionTag}] [versionTimestamp ${versionTimestamp}]`);
+		console.log(`[REVISION ${ShortId}] Request received`);
+
 		try {
 			const [opsgenieResponse, nextOnCallsResponse] = await Promise.all([
 				fetch(opsgenieUrl, {
@@ -60,16 +58,16 @@ var worker_default = {
 			const onCallUsers = data.data?.onCallParticipants;
 			if (onCallUsers && onCallUsers.length > 0) {
 				const currentUser = onCallUsers[0];
-				console.log(`[REVISION ${REVISION}]`, JSON.stringify(currentUser, null, 2));
-				console.log(`[REVISION ${REVISION}] ****** currentUser.name > ${currentUser.name}`);
-				console.log(`[REVISION ${REVISION}] ****** currentUser.endDate > ${currentUser.endDate}`);
+				console.log(`[REVISION ${ShortId}]`, JSON.stringify(currentUser, null, 2));
+				console.log(`[REVISION ${ShortId}] ****** currentUser.name > ${currentUser.name}`);
+				console.log(`[REVISION ${ShortId}] ****** currentUser.endDate > ${currentUser.endDate}`);
 				const nextOnCall = nextOnCallsData.data?.onCallRecipients?.[0];
 				const hoursLeft = nextOnCall?.onCallParticipants?.[0]?.endDate
 					? getHoursBetween(/* @__PURE__ */ new Date(), nextOnCall.onCallParticipants[0].endDate)
 					: getHoursBetween(/* @__PURE__ */ new Date(), currentUser.endDate);
-				console.log(`[REVISION ${REVISION}]`, JSON.stringify(nextOnCallsData, null, 2));
-				console.log(`[REVISION ${REVISION}] ****** nextOnCall > ${nextOnCall}`);
-				console.log(`[REVISION ${REVISION}] ****** hoursLeft > ${hoursLeft}`);
+				console.log(`[REVISION ${ShortId}]`, JSON.stringify(nextOnCallsData, null, 2));
+				console.log(`[REVISION ${ShortId}] ****** nextOnCall > ${nextOnCall}`);
+				console.log(`[REVISION ${ShortId}] ****** hoursLeft > ${hoursLeft}`);
 				processedData.current = {
 					name: currentUser.name,
 					shiftEnds: currentUser.endDate,
@@ -77,11 +75,11 @@ var worker_default = {
 				};
 			}
 			const nextOnCallRecipients = nextOnCallsData.data?.onCallRecipients;
-			console.log(`[REVISION ${REVISION}] ****** nextOnCallRecipients length:`, nextOnCallRecipients?.length);
-			console.log(`[REVISION ${REVISION}] ****** Full nextOnCallsData:`, JSON.stringify(nextOnCallsData, null, 2));
+			console.log(`[REVISION ${ShortId}] ****** nextOnCallRecipients length:`, nextOnCallRecipients?.length);
+			console.log(`[REVISION ${ShortId}] ****** Full nextOnCallsData:`, JSON.stringify(nextOnCallsData, null, 2));
 			if (nextOnCallRecipients && nextOnCallRecipients.length > 1) {
 				const nextUser = nextOnCallRecipients[1]?.onCallParticipants?.[0];
-				console.log(`[REVISION ${REVISION}] ****** nextUser from index 1:`, JSON.stringify(nextUser, null, 2));
+				console.log(`[REVISION ${ShortId}] ****** nextUser from index 1:`, JSON.stringify(nextUser, null, 2));
 				if (nextUser) {
 					processedData.next = {
 						name: nextUser.name,
@@ -91,7 +89,7 @@ var worker_default = {
 				}
 			} else if (nextOnCallRecipients && nextOnCallRecipients.length === 1) {
 				const potentialNextUser = nextOnCallRecipients[0]?.onCallParticipants?.[0];
-				console.log(`[REVISION ${REVISION}] ****** potentialNextUser from index 0:`, JSON.stringify(potentialNextUser, null, 2));
+				console.log(`[REVISION ${ShortId}] ****** potentialNextUser from index 0:`, JSON.stringify(potentialNextUser, null, 2));
 				if (potentialNextUser && new Date(potentialNextUser.startDate) > /* @__PURE__ */ new Date()) {
 					processedData.next = {
 						name: potentialNextUser.name,
@@ -101,9 +99,9 @@ var worker_default = {
 				}
 			}
 			if (!processedData.next) {
-				console.log(`[REVISION ${REVISION}] ****** Falling back to original metadata`);
+				console.log(`[REVISION ${ShortId}] ****** Falling back to original metadata`);
 				const nextOnCallUsers = data._meta?.nextOnCallRecipients;
-				console.log(`[REVISION ${REVISION}] ****** nextOnCallUsers from metadata:`, JSON.stringify(nextOnCallUsers, null, 2));
+				console.log(`[REVISION ${ShortId}] ****** nextOnCallUsers from metadata:`, JSON.stringify(nextOnCallUsers, null, 2));
 				if (nextOnCallUsers && nextOnCallUsers.length > 0) {
 					const nextUser = nextOnCallUsers[0];
 					processedData.next = {
@@ -113,7 +111,7 @@ var worker_default = {
 					};
 				}
 			}
-			console.log(`[REVISION ${REVISION}] ****** Final processedData:`, JSON.stringify(processedData, null, 2));
+			console.log(`[REVISION ${ShortId}] ****** Final processedData:`, JSON.stringify(processedData, null, 2));
 			return new Response(JSON.stringify(processedData), {
 				status: 200,
 				headers: {
@@ -123,7 +121,7 @@ var worker_default = {
 				},
 			});
 		} catch (error) {
-			console.log(`[REVISION ${REVISION}] ERROR: Failed to fetch from Opsgenie API:`, error);
+			console.log(`[REVISION ${ShortId}] ERROR: Failed to fetch from Opsgenie API:`, error);
 			return new Response(JSON.stringify({ error: 'Failed to fetch from Opsgenie API.' }), {
 				status: 502,
 				headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },

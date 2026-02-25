@@ -14,12 +14,11 @@ function humanize(str) {
 		.replace(/^[\s_]+|[\s_]+$/g, '')
 		.replace(/[_\s]+/g, ' ')
 		.replace(/\./g, ' ')
-		.replace(/^[a-z]/, function (m) {
-			return m.toUpperCase();
-		});
+		.replace(/\b[a-z]/g, (x) => x.toUpperCase());
 }
 
 __name(getHoursBetween, 'getHoursBetween');
+
 var worker_default = {
 	async fetch(request, env, ctx) {
 		const { id: versionId, tag: versionTag, timestamp: versionTimestamp } = env.CF_VERSION_METADATA;

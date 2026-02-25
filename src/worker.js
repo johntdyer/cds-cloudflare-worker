@@ -12,7 +12,8 @@ function getHoursBetween(date1, date2) {
 
 export default {
 	async fetch(request, env, ctx) {
-		const { id: versionId, tag: versionTag, timestamp: versionTimestamp } = env.CF_VERSION_METADATA;
+		SHORT_ID = string(versionId).split('-')[0];
+		const { id: SHORT_ID, tag: versionTag, timestamp: versionTimestamp } = env.CF_VERSION_METADATA;
 		// env.WAE.writeDataPoint({
 		// 	indexes: [versionId],
 		// 	blobs: [versionTag, versionTimestamp],

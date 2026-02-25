@@ -100,13 +100,13 @@ export default {
 			// The first recipient is the current on-call, the second is the next
 			const nextOnCallRecipients = nextOnCallsData.data?.onCallRecipients;
 			
-			console.log('****** nextOnCallRecipients length:', nextOnCallRecipients?.length);
-			console.log('****** Full nextOnCallsData:', JSON.stringify(nextOnCallsData, null, 2));
+			console.log(`[REVISION ${REVISION}] ****** nextOnCallRecipients length:`, nextOnCallRecipients?.length);
+			console.log(`[REVISION ${REVISION}] ****** Full nextOnCallsData:`, JSON.stringify(nextOnCallsData, null, 2));
 			
 			if (nextOnCallRecipients && nextOnCallRecipients.length > 1) {
 				// The second recipient is the next on-call
 				const nextUser = nextOnCallRecipients[1]?.onCallParticipants?.[0];
-				console.log('****** nextUser from index 1:', JSON.stringify(nextUser, null, 2));
+				console.log(`[REVISION ${REVISION}] ****** nextUser from index 1:`, JSON.stringify(nextUser, null, 2));
 				if (nextUser) {
 					processedData.next = {
 						name: nextUser.name,
@@ -117,7 +117,7 @@ export default {
 			} else if (nextOnCallRecipients && nextOnCallRecipients.length === 1) {
 				// If there's only one recipient, check if it's different from current
 				const potentialNextUser = nextOnCallRecipients[0]?.onCallParticipants?.[0];
-				console.log('****** potentialNextUser from index 0:', JSON.stringify(potentialNextUser, null, 2));
+				console.log(`[REVISION ${REVISION}] ****** potentialNextUser from index 0:`, JSON.stringify(potentialNextUser, null, 2));
 				
 				// Check if this user's shift starts after now (meaning they're next, not current)
 				if (potentialNextUser && new Date(potentialNextUser.startDate) > new Date()) {
@@ -131,9 +131,9 @@ export default {
 			
 			// If we still don't have next user, fall back to the original metadata
 			if (!processedData.next) {
-				console.log('****** Falling back to original metadata');
+				console.log(`[REVISION ${REVISION}] ****** Falling back to original metadata`);
 				const nextOnCallUsers = data._meta?.nextOnCallRecipients;
-				console.log('****** nextOnCallUsers from metadata:', JSON.stringify(nextOnCallUsers, null, 2));
+				console.log(`[REVISION ${REVISION}] ****** nextOnCallUsers from metadata:`, JSON.stringify(nextOnCallUsers, null, 2));
 				if (nextOnCallUsers && nextOnCallUsers.length > 0) {
 					const nextUser = nextOnCallUsers[0];
 					processedData.next = {
@@ -145,6 +145,8 @@ export default {
 			}
 			// --- End Processing ---
 
+			console.log(`[REVISION ${REVISION}] ****** Final processedData:`, JSON.stringify(processedData, null, 2));
+
 			// Return the new, cleaner data object
 			return new Response(JSON.stringify(processedData), {
 				status: 200,
@@ -154,6 +156,7 @@ export default {
 				},
 			});
 		} catch (error) {
+			console.log(`[REVISION ${REVISION}] ERROR: Failed to fetch from Opsgenie API:`, error);
 			return new Response(JSON.stringify({ error: 'Failed to fetch from Opsgenie API.' }), {
 				status: 502,
 				headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },

@@ -29,16 +29,32 @@ export default {
 		}
 
 		const opsgenieUrl = `https://api.opsgenie.com/v2/schedules/${encodeURIComponent(SCHEDULE_ID)}/on-calls?teamIdentifierType=name&teamIdentifier=${encodeURIComponent(TEAM_NAME)}`;
+		const nextOnCallsUrl = `https://api.opsgenie.com/v2/schedules/${encodeURIComponent(SCHEDULE_ID)}/next-on-calls?flat=true`;
 
 		try {
-			const opsgenieResponse = await fetch(opsgenieUrl, {
-				headers: { Authorization: `GenieKey ${OPSGENIE_API_KEY}` },
-			});
+			// Make both API calls in parallel
+			const [opsgenieResponse, nextOnCallsResponse] = await Promise.all([
+				fetch(opsgenieUrl, {
+					headers: { Authorization: `GenieKey ${OPSGENIE_API_KEY}` },
+				}),
+				fetch(nextOnCallsUrl, {
+					headers: { Authorization: `GenieKey ${OPSGENIE_API_KEY}` },
+				}),
+			]);
+
 			const data = await opsgenieResponse.json();
+			const nextOnCallsData = await nextOnCallsResponse.json();
 
 			if (!opsgenieResponse.ok) {
 				return new Response(JSON.stringify(data), {
 					status: opsgenieResponse.status,
+					headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+				});
+			}
+
+			if (!nextOnCallsResponse.ok) {
+				return new Response(JSON.stringify(nextOnCallsData), {
+					status: nextOnCallsResponse.status,
 					headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
 				});
 			}
@@ -53,26 +69,52 @@ export default {
 			const onCallUsers = data.data?.onCallParticipants;
 			if (onCallUsers && onCallUsers.length > 0) {
 				const currentUser = onCallUsers[0];
-				console.log(JSON.stringify(currentUser, null, 2));
 
-				console.log(`=====currentUser.name > ${currentUser.name}`);
-				console.log(`=====currentUser.endDate > ${currentUser.endDate}`);
+				console.log(JSON.stringify(currentUser, null, 2));
+				console.log(`****** currentUser.name > ${currentUser.name}`);
+				console.log(`****** currentUser.endDate > ${currentUser.endDate}`);
+
+				// Get the hours left from the next-on-calls endpoint
+				const nextOnCall = nextOnCallsData.data?.onCallRecipients?.[0];
+				const hoursLeft = nextOnCall?.onCallParticipants?.[0]?.endDate
+					? getHoursBetween(new Date(), nextOnCall.onCallParticipants[0].endDate)
+					: getHoursBetween(new Date(), currentUser.endDate);
+
+				console.log(JSON.stringify(nextOnCallsData, null, 2));
+				console.log(`****** nextOnCall > ${nextOnCall}`);
+				console.log(`****** hoursLeft > ${hoursLeft}`);
+
 				processedData.current = {
 					name: currentUser.name,
 					shiftEnds: currentUser.endDate,
-					hoursLeft: getHoursBetween(new Date(), currentUser.endDate),
+					hoursLeft: hoursLeft,
 				};
 			}
 
 			// Process next on-call user
-			const nextOnCallUsers = data._meta?.nextOnCallRecipients;
-			if (nextOnCallUsers && nextOnCallUsers.length > 0) {
-				const nextUser = nextOnCallUsers[0];
-				processedData.next = {
-					name: nextUser.name,
-					shiftStarts: nextUser.startDate,
-					shiftDurationHours: getHoursBetween(nextUser.startDate, nextUser.endDate),
-				};
+			// First try the next-on-calls endpoint, then fall back to the original data
+			const nextOnCallRecipients = nextOnCallsData.data?.onCallRecipients;
+			if (nextOnCallRecipients && nextOnCallRecipients.length > 1) {
+				// The second recipient is the next on-call
+				const nextUser = nextOnCallRecipients[1]?.onCallParticipants?.[0];
+				if (nextUser) {
+					processedData.next = {
+						name: nextUser.name,
+						shiftStarts: nextUser.startDate,
+						shiftDurationHours: getHoursBetween(nextUser.startDate, nextUser.endDate),
+					};
+				}
+			} else {
+				// Fall back to the original metadata
+				const nextOnCallUsers = data._meta?.nextOnCallRecipients;
+				if (nextOnCallUsers && nextOnCallUsers.length > 0) {
+					const nextUser = nextOnCallUsers[0];
+					processedData.next = {
+						name: nextUser.name,
+						shiftStarts: nextUser.startDate,
+						shiftDurationHours: getHoursBetween(nextUser.startDate, nextUser.endDate),
+					};
+				}
 			}
 			// --- End Processing ---
 

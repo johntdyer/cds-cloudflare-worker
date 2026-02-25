@@ -13,13 +13,13 @@ function humanize(str) {
 	return str
 		.split('@')[0]
 		.replace(/^[\s_]+|[\s_]+$/g, '')
-		.replace(/[_\s]+/g, ' ')
+		.replace(/[\_\s]+/g, ' ')
 		.replace(/\./g, ' ')
 		.replace(/\b[a-z]/g, (x) => x.toUpperCase());
 }
 __name(humanize, 'humanize');
 
-async function fetchScheduleInfo(scheduleId, scheduleName, env, ShortId) {
+async function fetchScheduleInfo(scheduleId, scheduleName, env, logger) {
 	const OPSGENIE_API_KEY = env.OPSGENIE_TEAM_API_KEY;
 	const opsgenieUrl = `https://api.opsgenie.com/v2/schedules/${encodeURIComponent(scheduleId)}/on-calls`;
 	const timelineUrl = `https://api.opsgenie.com/v2/schedules/${encodeURIComponent(scheduleId)}/timeline?interval=1&intervalUnit=months`;
@@ -31,7 +31,10 @@ async function fetchScheduleInfo(scheduleId, scheduleName, env, ShortId) {
 		]);
 
 		if (!opsgenieResponse.ok || !timelineResponse.ok) {
-			return { scheduleName, error: "Failed to fetch from Opsgenie" };
+			logger.warn(
+				`Failed to fetch from Opsgenie for schedule ${scheduleName} (Status: ${opsgenieResponse.status} / ${timelineResponse.status})`,
+			);
+			return { scheduleName, error: 'Failed to fetch from Opsgenie' };
 		}
 
 		const data = await opsgenieResponse.json();
@@ -83,42 +86,61 @@ async function fetchScheduleInfo(scheduleId, scheduleName, env, ShortId) {
 				shiftDurationHours: getHoursBetween(nextPeriod.startDate, nextPeriod.endDate),
 			};
 		}
-		
+
+		logger.debug(`Successfully processed schedule: ${scheduleName}`);
 		return processedData;
 	} catch (error) {
-		console.log(`[REVISION ${ShortId}] ERROR fetching schedule ${scheduleName}:`, error);
-		return { scheduleName, error: "Error fetching data" };
+		logger.error(`ERROR fetching schedule ${scheduleName}:`, error);
+		return { scheduleName, error: 'Error fetching data' };
 	}
 }
 __name(fetchScheduleInfo, 'fetchScheduleInfo');
 
 var worker_default = {
 	async fetch(request, env, ctx) {
-		const { id: versionId, tag: versionTag, timestamp: versionTimestamp } = env.CF_VERSION_METADATA || { id: "dev-0", tag: "dev", timestamp: Date.now() };
+		// Set up context and logging
+		const {
+			id: versionId,
+			tag: versionTag,
+			timestamp: versionTimestamp,
+		} = env.CF_VERSION_METADATA || { id: 'dev-0', tag: 'dev', timestamp: Date.now() };
 		const ShortId = versionId.split('-')[0];
+		const prefix = `[RevId: ${ShortId}]`;
+
+		const LOG_LEVELS = { DEBUG: 0, INFO: 1, WARN: 2, ERROR: 3 };
+		const configuredLevel = LOG_LEVELS[(env.LOG_LEVEL || 'INFO').toUpperCase()] ?? LOG_LEVELS.INFO;
+
+		const logger = {
+			debug: (...args) => configuredLevel <= LOG_LEVELS.DEBUG && console.debug('[DEBUG]', prefix, ...args),
+			info: (...args) => configuredLevel <= LOG_LEVELS.INFO && console.info('[INFO]', prefix, ...args),
+			warn: (...args) => configuredLevel <= LOG_LEVELS.WARN && console.warn('[WARN]', prefix, ...args),
+			error: (...args) => configuredLevel <= LOG_LEVELS.ERROR && console.error('[ERROR]', prefix, ...args),
+		};
+
 		const OPSGENIE_API_KEY = env.OPSGENIE_TEAM_API_KEY;
 
 		if (!OPSGENIE_API_KEY) {
-			console.log(`[REVISION ${ShortId}] ERROR: API key not configured`);
+			logger.error('API key not configured');
 			return new Response(JSON.stringify({ error: 'API key is not configured in Worker secrets.' }), {
 				status: 500,
 				headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
 			});
 		}
 
-		console.log(`[versionId ${ShortId}] [versionTag ${versionTag}] [versionTimestamp ${versionTimestamp}]`);
-		console.log(`[REVISION ${ShortId}] Request received`);
+		logger.debug(`[versionTag ${versionTag}] [versionTimestamp ${versionTimestamp}]`);
+		logger.info('Request received');
 
 		try {
 			// Get all schedules for the team
 			const schedulesUrl = `https://api.opsgenie.com/v2/schedules`;
 			const schedulesResponse = await fetch(schedulesUrl, {
-				headers: { Authorization: `GenieKey ${OPSGENIE_API_KEY}` }
+				headers: { Authorization: `GenieKey ${OPSGENIE_API_KEY}` },
 			});
 
 			if (!schedulesResponse.ok) {
 				const errData = await schedulesResponse.json().catch(() => ({}));
-				return new Response(JSON.stringify({ error: "Failed to fetch schedules list", details: errData }), {
+				logger.error('Failed to fetch schedules list', errData);
+				return new Response(JSON.stringify({ error: 'Failed to fetch schedules list', details: errData }), {
 					status: schedulesResponse.status,
 					headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
 				});
@@ -126,14 +148,17 @@ var worker_default = {
 
 			const schedulesData = await schedulesResponse.json();
 			const schedules = schedulesData.data || [];
-			
+
+			logger.info(`Found ${schedules.length} schedules visible to token:`);
+			schedules.forEach((s) => {
+				logger.debug(`- Schedule ID: ${s.id}, Name: "${s.name}", Description: "${s.description || 'none'}"`);
+			});
+
 			// Fetch details for ALL schedules concurrently
-			const schedulePromises = schedules.map(schedule => 
-				fetchScheduleInfo(schedule.id, schedule.name, env, ShortId)
-			);
-			
+			const schedulePromises = schedules.map((schedule) => fetchScheduleInfo(schedule.id, schedule.name, env, logger));
+
 			const resultsArray = await Promise.all(schedulePromises);
-			
+
 			// Convert array to an object keyed by scheduleName
 			const resultsObject = {};
 			for (const res of resultsArray) {
@@ -146,8 +171,9 @@ var worker_default = {
 				}
 			}
 
-			console.log(`[REVISION ${ShortId}] ****** Final Processed Data for ${schedules.length} schedules`);
-			
+			logger.info(`Final Processed Data for ${schedules.length} schedules`);
+			logger.debug('Payload:', JSON.stringify(resultsObject));
+
 			return new Response(JSON.stringify(resultsObject), {
 				status: 200,
 				headers: {
@@ -156,7 +182,7 @@ var worker_default = {
 				},
 			});
 		} catch (error) {
-			console.log(`[REVISION ${ShortId}] ERROR: Failed to fetch from Opsgenie API:`, error);
+			logger.error('Failed to process Opsgenie API requests:', error);
 			return new Response(JSON.stringify({ error: 'Failed to process Opsgenie API requests.' }), {
 				status: 502,
 				headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },

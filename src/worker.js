@@ -13,6 +13,9 @@ function getHoursBetween(date1, date2) {
 export default {
 	async fetch(request, env, ctx) {
 		// --- Configuration ---
+		const REVISION = '1.0.1'; // Update this with each deployment
+		console.log(`[REVISION ${REVISION}] Request received`);
+		
 		// Replace these with your actual team and schedule names
 		const TEAM_NAME = '13cafbf7-cb1e-4c12-a387-04b9374c14dd';
 		const SCHEDULE_ID = env.OPSGENIE_SCHEDULE_ID;
@@ -22,6 +25,7 @@ export default {
 
 		// --- End Configuration ---
 		if (!OPSGENIE_API_KEY) {
+			console.log(`[REVISION ${REVISION}] ERROR: API key not configured`);
 			return new Response(JSON.stringify({ error: 'API key is not configured in Worker secrets.' }), {
 				status: 500,
 				headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
@@ -92,11 +96,17 @@ export default {
 			}
 
 			// Process next on-call user
-			// First try the next-on-calls endpoint, then fall back to the original data
+			// The next-on-calls endpoint returns future on-call rotations
+			// The first recipient is the current on-call, the second is the next
 			const nextOnCallRecipients = nextOnCallsData.data?.onCallRecipients;
+			
+			console.log('****** nextOnCallRecipients length:', nextOnCallRecipients?.length);
+			console.log('****** Full nextOnCallsData:', JSON.stringify(nextOnCallsData, null, 2));
+			
 			if (nextOnCallRecipients && nextOnCallRecipients.length > 1) {
 				// The second recipient is the next on-call
 				const nextUser = nextOnCallRecipients[1]?.onCallParticipants?.[0];
+				console.log('****** nextUser from index 1:', JSON.stringify(nextUser, null, 2));
 				if (nextUser) {
 					processedData.next = {
 						name: nextUser.name,
@@ -104,9 +114,26 @@ export default {
 						shiftDurationHours: getHoursBetween(nextUser.startDate, nextUser.endDate),
 					};
 				}
-			} else {
-				// Fall back to the original metadata
+			} else if (nextOnCallRecipients && nextOnCallRecipients.length === 1) {
+				// If there's only one recipient, check if it's different from current
+				const potentialNextUser = nextOnCallRecipients[0]?.onCallParticipants?.[0];
+				console.log('****** potentialNextUser from index 0:', JSON.stringify(potentialNextUser, null, 2));
+				
+				// Check if this user's shift starts after now (meaning they're next, not current)
+				if (potentialNextUser && new Date(potentialNextUser.startDate) > new Date()) {
+					processedData.next = {
+						name: potentialNextUser.name,
+						shiftStarts: potentialNextUser.startDate,
+						shiftDurationHours: getHoursBetween(potentialNextUser.startDate, potentialNextUser.endDate),
+					};
+				}
+			}
+			
+			// If we still don't have next user, fall back to the original metadata
+			if (!processedData.next) {
+				console.log('****** Falling back to original metadata');
 				const nextOnCallUsers = data._meta?.nextOnCallRecipients;
+				console.log('****** nextOnCallUsers from metadata:', JSON.stringify(nextOnCallUsers, null, 2));
 				if (nextOnCallUsers && nextOnCallUsers.length > 0) {
 					const nextUser = nextOnCallUsers[0];
 					processedData.next = {

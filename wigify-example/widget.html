@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Opsgenie On-Call Status</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            display: grid;
+            place-content: center;
+            min-height: 100vh;
+            text-align: center;
+            background-color: #f4f6f8;
+            color: #333;
+            margin: 0;
+            padding: 1rem;
+        }
+
+        .container {
+            background: white;
+            padding: 2rem 3rem;
+            border-radius: 12px;
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08);
+            width: 100%;
+            max-width: 450px;
+        }
+
+        h1 {
+            color: #0052cc;
+            margin-bottom: 2rem;
+            font-size: 1.8em;
+        }
+
+        .on-call-section {
+            margin-bottom: 2rem;
+            padding-bottom: 1.5rem;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        .on-call-section:last-child {
+            margin-bottom: 0;
+            border-bottom: none;
+            padding-bottom: 0;
+        }
+
+        .on-call-section h2 {
+            font-size: 0.9em;
+            color: #555;
+            margin: 0 0 0.5rem 0;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            text-align: left;
+        }
+
+        .person-name {
+            font-size: 1.8em;
+            font-weight: 600;
+            color: #172b4d;
+            margin: 0;
+            text-align: left;
+        }
+
+        .details {
+            font-size: 1em;
+            color: #42526e;
+            margin-top: 0.5rem;
+            text-align: left;
+        }
+
+        .loading,
+        .error {
+            text-align: left;
+            padding: 1rem 0;
+        }
+
+        .loading {
+            color: #777;
+        }
+
+        .error {
+            color: #de350b;
+            font-weight: bold;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="container">
+        <h1>On-Call Status</h1>
+
+        <div id="current-on-call" class="on-call-section">
+            <h2>Currently On Call</h2>
+            <p class="loading">Fetching data...</p>
+        </div>
+
+        <div id="next-on-call" class="on-call-section">
+            <h2>Up Next</h2>
+            <p class="loading">Fetching data...</p>
+        </div>
+    </div>
+
+    <script>
+        (function () {
+        // --- Configuration ---
+        const WORKER_URL = "https://opsgenie-cds-schedule.johntdyer5864.workers.dev";
+        // --- End Configuration ---
+
+        /**
+         * Renders the "Currently On Call" section of the page.
+         * The logic inside this function does not need to change.
+         */
+        function renderCurrent(data) {
+            const container = document.getElementById('current-on-call');
+            if (!data || !data.name) {
+                container.innerHTML = '<h2>Currently On Call</h2><p>No one is currently on-call.</p>';
+                return;
+            }
+            container.innerHTML = `
+                <h2>Currently On Call</h2>
+                <p class="person-name">${data.name}</p>
+                <p class="details">${data.hoursLeft.toFixed(1)} hours left on shift</p>
+            `;
+        }
+
+        /**
+         * Renders the "Up Next" section of the page.
+         * The logic inside this function does not need to change.
+         */
+        function renderNext(data) {
+            const container = document.getElementById('next-on-call');
+            if (!data || !data.name) {
+                container.innerHTML = '<h2>Up Next</h2><p>No one is scheduled next.</p>';
+                return;
+            }
+
+            const startDate = new Date(data.shiftStarts);
+            const formattedDate = startDate.toLocaleString(undefined, {
+                weekday: 'short',
+                month: 'short',
+                day: 'numeric',
+                hour: 'numeric',
+                minute: 'numeric'
+            });
+
+            container.innerHTML = `
+                <h2>Up Next</h2>
+                <p class="person-name">${data.name}</p>
+                <p class="details">Starts ${formattedDate} for ${data.shiftDurationHours} hours</p>
+            `;
+        }
+
+        /**
+         * Fetches data from the worker and triggers the render functions.
+         * THIS FUNCTION HAS BEEN UPDATED TO HANDLE THE NEW JSON STRUCTURE.
+         */
+        async function displayOnCallStatus() {
+            try {
+                const response = await fetch(WORKER_URL);
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.message || `Request failed with status: ${response.status}`);
+                }
+                const data = await response.json();
+
+                // Pretty-print the fetched object to the console for debugging
+                console.log("--- Fetched On-Call Data ---");
+                console.log(JSON.stringify(data, null, 2));
+                console.log("----------------------------");
+
+                // --- NEW LOGIC TO HANDLE THE NESTED STRUCTURE ---
+                // Get the first key from the response object (e.g., "Cloud Eng - Cloud Dev_schedule")
+                const scheduleNameKey = Object.keys(data)[0];
+                if (!scheduleNameKey || !data[scheduleNameKey]) {
+                    throw new Error("Data not found in the expected format.");
+                }
+
+                // Access the data using the dynamically found key
+                const onCallData = data[scheduleNameKey];
+
+                // Call the render functions with the correctly nested data
+                renderCurrent(onCallData.current);
+                renderNext(onCallData.next);
+                // --- END OF NEW LOGIC ---
+
+            } catch (error) {
+                console.error("Error fetching on-call status:", error);
+                const currentContainer = document.getElementById('current-on-call');
+            }
+          }
+
+
+  
+  
+    displayOnCallStatus();
+  })();
+</script>

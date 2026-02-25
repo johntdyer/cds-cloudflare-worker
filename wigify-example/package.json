@@ -1,0 +1,11 @@
+{
+  "name": "oncall",
+  "version": "1.0.0",
+  "title": "oncall",
+  "size": {
+    "width": 200,
+    "height": 100
+  },
+  "resizable": true,
+  "variables": []
+}

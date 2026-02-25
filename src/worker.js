@@ -150,11 +150,11 @@ var worker_default = {
 			const schedules = schedulesData.data || [];
 
 			var foundSchedules = [];
-			logger.info(`Found ${schedules.length} schedules visible to token:`);
+
 			schedules.forEach((s) => {
 				foundSchedules.push(`- Schedule ID: ${s.id}, Name: "${s.name}", Description: "${s.description || 'none'}"`);
-				// logger.debug(`Found - Schedule ID: ${s.id}, Name: "${s.name}", Description: "${s.description || 'none'}"`);
 			});
+			logger.info(`Found ${schedules.length} schedules visible to token: [ ${foundSchedules} ]`);
 
 			// Fetch details for ALL schedules concurrently
 			const schedulePromises = schedules.map((schedule) => fetchScheduleInfo(schedule.id, schedule.name, env, logger));

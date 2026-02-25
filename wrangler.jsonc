@@ -4,6 +4,9 @@
   "workers_dev": true,
   "preview_urls": false,
   "compatibility_date": "2026-02-25",
+  "version_metadata": {
+    "binding": "CF_VERSION_METADATA"
+  },
   "observability": {
     "enabled": true,
     "head_sampling_rate": 1,

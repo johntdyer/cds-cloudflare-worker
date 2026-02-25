@@ -12,10 +12,21 @@ function getHoursBetween(date1, date2) {
 
 export default {
 	async fetch(request, env, ctx) {
+		const { id: versionId, tag: versionTag, timestamp: versionTimestamp } = env.CF_VERSION_METADATA;
+		env.WAE.writeDataPoint({
+			indexes: [versionId],
+			blobs: [versionTag, versionTimestamp],
+			//...
+		});
+
 		// --- Configuration ---
 		const REVISION = '1.0.1'; // Update this with each deployment
+		console.log(`******`);
+		console.log(`[versionId ${versionId}] [versionTag ${versionTag}] [versionTimestamp ${versionTimestamp}]`);
+		console.log(`******`);
 		console.log(`[REVISION ${REVISION}] Request received`);
-		
+		console.log(`[REVISION ${REVISION}] Request received`);
+
 		// Replace these with your actual team and schedule names
 		const TEAM_NAME = '13cafbf7-cb1e-4c12-a387-04b9374c14dd';
 		const SCHEDULE_ID = env.OPSGENIE_SCHEDULE_ID;
@@ -99,10 +110,10 @@ export default {
 			// The next-on-calls endpoint returns future on-call rotations
 			// The first recipient is the current on-call, the second is the next
 			const nextOnCallRecipients = nextOnCallsData.data?.onCallRecipients;
-			
+
 			console.log(`[REVISION ${REVISION}] ****** nextOnCallRecipients length:`, nextOnCallRecipients?.length);
 			console.log(`[REVISION ${REVISION}] ****** Full nextOnCallsData:`, JSON.stringify(nextOnCallsData, null, 2));
-			
+
 			if (nextOnCallRecipients && nextOnCallRecipients.length > 1) {
 				// The second recipient is the next on-call
 				const nextUser = nextOnCallRecipients[1]?.onCallParticipants?.[0];
@@ -118,7 +129,7 @@ export default {
 				// If there's only one recipient, check if it's different from current
 				const potentialNextUser = nextOnCallRecipients[0]?.onCallParticipants?.[0];
 				console.log(`[REVISION ${REVISION}] ****** potentialNextUser from index 0:`, JSON.stringify(potentialNextUser, null, 2));
-				
+
 				// Check if this user's shift starts after now (meaning they're next, not current)
 				if (potentialNextUser && new Date(potentialNextUser.startDate) > new Date()) {
 					processedData.next = {
@@ -128,7 +139,7 @@ export default {
 					};
 				}
 			}
-			
+
 			// If we still don't have next user, fall back to the original metadata
 			if (!processedData.next) {
 				console.log(`[REVISION ${REVISION}] ****** Falling back to original metadata`);

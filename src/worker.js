@@ -149,9 +149,11 @@ var worker_default = {
 			const schedulesData = await schedulesResponse.json();
 			const schedules = schedulesData.data || [];
 
+			var foundSchedules = [];
 			logger.info(`Found ${schedules.length} schedules visible to token:`);
 			schedules.forEach((s) => {
-				logger.debug(`- Schedule ID: ${s.id}, Name: "${s.name}", Description: "${s.description || 'none'}"`);
+				foundSchedules.push(`- Schedule ID: ${s.id}, Name: "${s.name}", Description: "${s.description || 'none'}"`);
+				// logger.debug(`Found - Schedule ID: ${s.id}, Name: "${s.name}", Description: "${s.description || 'none'}"`);
 			});
 
 			// Fetch details for ALL schedules concurrently

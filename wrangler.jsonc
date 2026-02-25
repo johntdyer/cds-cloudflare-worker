@@ -24,7 +24,6 @@
   },
   "vars": {
     "OPSGENIE_SCHEDULE_ID": "a986e045-49f9-4ea6-a0b1-60d8f6b3ddf7",
-    "OPSGENIE_SCHEDULE_NAME": "Cloud Eng - Cloud Dev_escalation\n  ",
     "OPSGENIE_TEAM_NAME": "13cafbf7-cb1e-4c12-a387-04b9374c14dd"
   }
 }

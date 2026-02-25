@@ -74,9 +74,9 @@ export default {
 			if (onCallUsers && onCallUsers.length > 0) {
 				const currentUser = onCallUsers[0];
 
-				console.log(JSON.stringify(currentUser, null, 2));
-				console.log(`****** currentUser.name > ${currentUser.name}`);
-				console.log(`****** currentUser.endDate > ${currentUser.endDate}`);
+				console.log(`[REVISION ${REVISION}]`, JSON.stringify(currentUser, null, 2));
+				console.log(`[REVISION ${REVISION}] ****** currentUser.name > ${currentUser.name}`);
+				console.log(`[REVISION ${REVISION}] ****** currentUser.endDate > ${currentUser.endDate}`);
 
 				// Get the hours left from the next-on-calls endpoint
 				const nextOnCall = nextOnCallsData.data?.onCallRecipients?.[0];
@@ -84,9 +84,9 @@ export default {
 					? getHoursBetween(new Date(), nextOnCall.onCallParticipants[0].endDate)
 					: getHoursBetween(new Date(), currentUser.endDate);
 
-				console.log(JSON.stringify(nextOnCallsData, null, 2));
-				console.log(`****** nextOnCall > ${nextOnCall}`);
-				console.log(`****** hoursLeft > ${hoursLeft}`);
+				console.log(`[REVISION ${REVISION}]`, JSON.stringify(nextOnCallsData, null, 2));
+				console.log(`[REVISION ${REVISION}] ****** nextOnCall > ${nextOnCall}`);
+				console.log(`[REVISION ${REVISION}] ****** hoursLeft > ${hoursLeft}`);
 
 				processedData.current = {
 					name: currentUser.name,

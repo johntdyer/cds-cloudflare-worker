@@ -7,6 +7,17 @@ function getHoursBetween(date1, date2) {
 	let diffInMs = new Date(date2) - new Date(date1);
 	return Math.round((diffInMs / (1e3 * 60 * 60)) * 100) / 100;
 }
+
+function humanize(str) {
+	return str
+		.split('@')[0]
+		.replace(/^[\s_]+|[\s_]+$/g, '')
+		.replace(/[_\s]+/g, ' ')
+		.replace(/^[a-z]/, function (m) {
+			return m.toUpperCase();
+		});
+}
+
 __name(getHoursBetween, 'getHoursBetween');
 var worker_default = {
 	async fetch(request, env, ctx) {
@@ -23,93 +34,100 @@ var worker_default = {
 			});
 		}
 		const opsgenieUrl = `https://api.opsgenie.com/v2/schedules/${encodeURIComponent(SCHEDULE_ID)}/on-calls?teamIdentifierType=name&teamIdentifier=${encodeURIComponent(TEAM_NAME)}`;
-		const nextOnCallsUrl = `https://api.opsgenie.com/v2/schedules/${encodeURIComponent(SCHEDULE_ID)}/next-on-calls?flat=true`;
+		const timelineUrl = `https://api.opsgenie.com/v2/schedules/${encodeURIComponent(SCHEDULE_ID)}/timeline?interval=1&intervalUnit=months`;
 
 		console.log(`[versionId ${ShortId}] [versionTag ${versionTag}] [versionTimestamp ${versionTimestamp}]`);
 		console.log(`[REVISION ${ShortId}] Request received`);
 
 		try {
-			const [opsgenieResponse, nextOnCallsResponse] = await Promise.all([
+			// Fetch both on-calls (to get exact current user info) and timeline (to get shift start/end dates)
+			const [opsgenieResponse, timelineResponse] = await Promise.all([
 				fetch(opsgenieUrl, {
 					headers: { Authorization: `GenieKey ${OPSGENIE_API_KEY}` },
 				}),
-				fetch(nextOnCallsUrl, {
+				fetch(timelineUrl, {
 					headers: { Authorization: `GenieKey ${OPSGENIE_API_KEY}` },
 				}),
 			]);
+
 			const data = await opsgenieResponse.json();
-			const nextOnCallsData = await nextOnCallsResponse.json();
+			const timelineData = await timelineResponse.json();
+
 			if (!opsgenieResponse.ok) {
 				return new Response(JSON.stringify(data), {
 					status: opsgenieResponse.status,
 					headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
 				});
 			}
-			if (!nextOnCallsResponse.ok) {
-				return new Response(JSON.stringify(nextOnCallsData), {
-					status: nextOnCallsResponse.status,
+			if (!timelineResponse.ok) {
+				return new Response(JSON.stringify(timelineData), {
+					status: timelineResponse.status,
 					headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
 				});
 			}
+
 			const processedData = {
 				current: null,
 				next: null,
 			};
+
+			// Extract all shift periods from the timeline
+			let allPeriods = [];
+			if (timelineData.data?.finalTimeline?.rotations) {
+				for (const rotation of timelineData.data.finalTimeline.rotations) {
+					if (rotation.periods) {
+						allPeriods.push(...rotation.periods);
+					}
+				}
+			}
+
+			// Sort periods chronologically
+			allPeriods.sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime());
+
+			const now = new Date();
+
+			// Find current shift period
+			const currentPeriod = allPeriods.find((p) => new Date(p.startDate) <= now && new Date(p.endDate) > now);
+
+			// Find next shift period
+			const nextPeriodThreshold = currentPeriod ? new Date(currentPeriod.endDate) : now;
+			const nextPeriod = allPeriods.find((p) => new Date(p.startDate) >= nextPeriodThreshold);
+
 			const onCallUsers = data.data?.onCallParticipants;
 			if (onCallUsers && onCallUsers.length > 0) {
 				const currentUser = onCallUsers[0];
-				console.log(`[REVISION ${ShortId}]`, JSON.stringify(currentUser, null, 2));
-				console.log(`[REVISION ${ShortId}] ****** currentUser.name > ${currentUser.name}`);
-				console.log(`[REVISION ${ShortId}] ****** currentUser.endDate > ${currentUser.endDate}`);
-				const nextOnCall = nextOnCallsData.data?.onCallRecipients?.[0];
-				const hoursLeft = nextOnCall?.onCallParticipants?.[0]?.endDate
-					? getHoursBetween(/* @__PURE__ */ new Date(), nextOnCall.onCallParticipants[0].endDate)
-					: getHoursBetween(/* @__PURE__ */ new Date(), currentUser.endDate);
-				console.log(`[REVISION ${ShortId}]`, JSON.stringify(nextOnCallsData, null, 2));
-				console.log(`[REVISION ${ShortId}] ****** nextOnCall > ${nextOnCall}`);
-				console.log(`[REVISION ${ShortId}] ****** hoursLeft > ${hoursLeft}`);
+
+				// We use the timeline's currentPeriod to get the exact endDate
+				const shiftEnds = currentPeriod ? currentPeriod.endDate : null;
+				const hoursLeft = shiftEnds ? getHoursBetween(now, shiftEnds) : 0;
+
 				processedData.current = {
-					name: currentUser.name,
-					shiftEnds: currentUser.endDate,
-					hoursLeft,
+					name: humanize(currentUser.name),
+					shiftEnds: shiftEnds,
+					hoursLeft: hoursLeft,
+				};
+
+				console.log(`[REVISION ${ShortId}] ****** currentUser.name > ${humanize(currentUser.name)}`);
+				console.log(`[REVISION ${ShortId}] ****** shiftEnds > ${shiftEnds}`);
+				console.log(`[REVISION ${ShortId}] ****** hoursLeft > ${hoursLeft}`);
+			} else if (currentPeriod) {
+				// Fallback if on-call endpoint didn't have participants but timeline does
+				const shiftEnds = currentPeriod.endDate;
+				processedData.current = {
+					name: humanize(currentPeriod.recipient?.name) || 'Unknown',
+					shiftEnds: shiftEnds,
+					hoursLeft: getHoursBetween(now, shiftEnds),
 				};
 			}
-			const nextOnCallRecipients = nextOnCallsData.data?.onCallRecipients;
-			console.log(`[REVISION ${ShortId}] ****** nextOnCallRecipients length:`, nextOnCallRecipients?.length);
-			console.log(`[REVISION ${ShortId}] ****** Full nextOnCallsData:`, JSON.stringify(nextOnCallsData, null, 2));
-			if (nextOnCallRecipients && nextOnCallRecipients.length > 1) {
-				const nextUser = nextOnCallRecipients[1]?.onCallParticipants?.[0];
-				console.log(`[REVISION ${ShortId}] ****** nextUser from index 1:`, JSON.stringify(nextUser, null, 2));
-				if (nextUser) {
-					processedData.next = {
-						name: nextUser.name,
-						shiftStarts: nextUser.startDate,
-						shiftDurationHours: getHoursBetween(nextUser.startDate, nextUser.endDate),
-					};
-				}
-			} else if (nextOnCallRecipients && nextOnCallRecipients.length === 1) {
-				const potentialNextUser = nextOnCallRecipients[0]?.onCallParticipants?.[0];
-				console.log(`[REVISION ${ShortId}] ****** potentialNextUser from index 0:`, JSON.stringify(potentialNextUser, null, 2));
-				if (potentialNextUser && new Date(potentialNextUser.startDate) > /* @__PURE__ */ new Date()) {
-					processedData.next = {
-						name: potentialNextUser.name,
-						shiftStarts: potentialNextUser.startDate,
-						shiftDurationHours: getHoursBetween(potentialNextUser.startDate, potentialNextUser.endDate),
-					};
-				}
-			}
-			if (!processedData.next) {
-				console.log(`[REVISION ${ShortId}] ****** Falling back to original metadata`);
-				const nextOnCallUsers = data._meta?.nextOnCallRecipients;
-				console.log(`[REVISION ${ShortId}] ****** nextOnCallUsers from metadata:`, JSON.stringify(nextOnCallUsers, null, 2));
-				if (nextOnCallUsers && nextOnCallUsers.length > 0) {
-					const nextUser = nextOnCallUsers[0];
-					processedData.next = {
-						name: nextUser.name,
-						shiftStarts: nextUser.startDate,
-						shiftDurationHours: getHoursBetween(nextUser.startDate, nextUser.endDate),
-					};
-				}
+
+			if (nextPeriod) {
+				processedData.next = {
+					name: humanize(nextPeriod.recipient?.name || 'Unknown'),
+					shiftStarts: nextPeriod.startDate,
+					shiftDurationHours: getHoursBetween(nextPeriod.startDate, nextPeriod.endDate),
+				};
+				console.log(`[REVISION ${ShortId}] ****** nextUser.name > ${humanize(processedData.next.name)}`);
+				console.log(`[REVISION ${ShortId}] ****** nextUser shiftStarts > ${processedData.next.shiftStarts}`);
 			}
 			console.log(`[REVISION ${ShortId}] ****** Final processedData:`, JSON.stringify(processedData, null, 2));
 			return new Response(JSON.stringify(processedData), {

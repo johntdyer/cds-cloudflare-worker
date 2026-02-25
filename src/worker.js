@@ -13,11 +13,11 @@ function getHoursBetween(date1, date2) {
 export default {
 	async fetch(request, env, ctx) {
 		const { id: versionId, tag: versionTag, timestamp: versionTimestamp } = env.CF_VERSION_METADATA;
-		env.WAE.writeDataPoint({
-			indexes: [versionId],
-			blobs: [versionTag, versionTimestamp],
-			//...
-		});
+		// env.WAE.writeDataPoint({
+		// 	indexes: [versionId],
+		// 	blobs: [versionTag, versionTimestamp],
+		// 	//...
+		// });
 
 		// --- Configuration ---
 		const REVISION = '1.0.1'; // Update this with each deployment
